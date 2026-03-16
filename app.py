@@ -16,7 +16,7 @@ EXCEL_FILE = "facturas.xlsx"
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "bmp", "tiff", "tif", "webp"}
 
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB max
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 # ──────────────────────────────────────────────
 # Utilidades
@@ -27,12 +27,12 @@ def allowed_file(filename):
 
 
 def preprocesar_imagen(img):
-    img = img.convert("L")                                    # Escala de grises
+    img = img.convert("L")
     ancho, alto = img.size
-    img = img.resize((ancho * 2, alto * 2), Image.LANCZOS)   # Agrandar x2
-    img = ImageEnhance.Contrast(img).enhance(2.5)             # Más contraste
-    img = ImageEnhance.Sharpness(img).enhance(2.0)            # Más nitidez
-    img = img.point(lambda x: 0 if x < 140 else 255)         # Blanco y negro puro
+    img = img.resize((ancho * 2, alto * 2), Image.LANCZOS)
+    img = ImageEnhance.Contrast(img).enhance(2.5)
+    img = ImageEnhance.Sharpness(img).enhance(2.0)
+    img = img.point(lambda x: 0 if x < 140 else 255)
     return img
 
 
@@ -65,7 +65,8 @@ def extraer_datos(texto):
 
     # ── TOTAL ────────────────────────────────────────────────────────────────
     patrones_total = [
-        r"(?:TOTAL|'OTAL|T0TAL)\s*\$?\s*([\d\.\,]+)",
+        r"(?:TOTAL|'OTAL|OTAL|T0TAL)\s*\$?\s*([\d\.\,]+)",
+        r"(?:COMPRA\s*NETA)\s*\$?\s*([\d\s\.\,]+)",
         r"(?:total\s*(?:a\s*pagar|factura|general|importe)?|gran\s*total|importe\s*total|monto\s*total)\s*[:\$]?\s*\$?\s*([\d\.,]+)",
         r"(?:valor\s*total|total\s*bs\.?|total\s*cop)\s*[:\$]?\s*([\d\.,]+)",
     ]
@@ -73,6 +74,7 @@ def extraer_datos(texto):
         match = re.search(patron, texto, re.IGNORECASE)
         if match:
             total_limpio = re.sub(r"[\[\]\(\)]+$", "", match.group(1)).strip()
+            total_limpio = re.sub(r"\s+", "", total_limpio)
             resultado["total"] = total_limpio
             break
 
@@ -140,7 +142,7 @@ def guardar_en_excel(fecha, codigo_aprobado, total):
     ws = wb["Facturas"]
     nueva_fila = ws.max_row + 1
 
-    valores     = [fecha or "No detectado", codigo_aprobado or "No detectado", total or "No detectado"]
+    valores      = [fecha or "No detectado", codigo_aprobado or "No detectado", total or "No detectado"]
     alineaciones = [DATA_ALIGN_CENTER, DATA_ALIGN_CENTER, DATA_ALIGN_RIGHT]
 
     for col, (val, aln) in enumerate(zip(valores, alineaciones), start=1):
