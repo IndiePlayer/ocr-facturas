@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OCR Facturas – Extractor Inteligente</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #2d3748; }
+
+    header {
+      background: linear-gradient(135deg, #1F4E79, #2E86C1);
+      color: #fff; padding: 24px 40px;
+      display: flex; align-items: center; gap: 16px;
+    }
+    header h1 { font-size: 1.6rem; font-weight: 700; }
+    header p  { font-size: 0.9rem; opacity: .8; margin-top: 4px; }
+
+    .container { max-width: 1000px; margin: 32px auto; padding: 0 20px; }
+
+    /* ── Alertas ── */
+    .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: .9rem; }
+    .alert-warning { background: #fff3cd; border-left: 4px solid #f0ad4e; color: #856404; }
+    .alert-success { background: #d1e7dd; border-left: 4px solid #198754; color: #0f5132; }
+
+    /* ── Card ── */
+    .card {
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08); padding: 28px; margin-bottom: 28px;
+    }
+    .card h2 { font-size: 1.1rem; color: #1F4E79; margin-bottom: 16px;
+               display: flex; align-items: center; gap: 8px; }
+
+    /* ── Upload Zone ── */
+    .upload-zone {
+      border: 2px dashed #90cdf4; border-radius: 10px;
+      padding: 40px 20px; text-align: center; cursor: pointer;
+      transition: all .2s; background: #ebf8ff;
+    }
+    .upload-zone:hover { border-color: #2E86C1; background: #dbeafe; }
+    .upload-zone input[type="file"] { display: none; }
+    .upload-zone label { cursor: pointer; display: block; }
+    .upload-zone .icon { font-size: 2.5rem; margin-bottom: 10px; }
+    .upload-zone p  { color: #4a90d9; font-weight: 600; }
+    .upload-zone small { color: #718096; font-size: .8rem; }
+    #file-list { margin-top: 12px; font-size: .85rem; color: #2d3748; }
+
+    /* ── Botones ── */
+    .btn {
+      padding: 10px 22px; border-radius: 8px; font-size: .9rem;
+      font-weight: 600; cursor: pointer; border: none; transition: all .2s;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn-primary { background: #1F4E79; color: #fff; }
+    .btn-primary:hover { background: #163d5e; }
+    .btn-success { background: #198754; color: #fff; }
+    .btn-success:hover { background: #146c43; }
+    .btn-danger  { background: #dc3545; color: #fff; }
+    .btn-danger:hover  { background: #b02a37; }
+    .btn-group { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+
+    /* ── Tabla ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    thead tr { background: #1F4E79; color: #fff; }
+    thead th { padding: 12px 14px; text-align: left; font-weight: 600; }
+    tbody tr:nth-child(even) { background: #ebf3fb; }
+    tbody tr:hover { background: #dbeafe; }
+    tbody td { padding: 10px 14px; border-bottom: 1px solid #e2e8f0; }
+    .badge-empty { color: #a0aec0; font-style: italic; font-size: .82rem; }
+    .empty-state { text-align: center; padding: 40px; color: #a0aec0; }
+    .empty-state .icon { font-size: 2rem; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>📄</div>
+  <div>
+    <h1>OCR Facturas – Extractor Inteligente</h1>
+    <p>Sube imágenes de facturas o recibos y extrae automáticamente fecha, código de aprobado y total</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Alertas flash -->
+  {% for cat, msg in get_flashed_messages(with_categories=true) %}
+    <div class="alert alert-{{ cat }}">{{ msg }}</div>
+  {% endfor %}
+
+  <!-- ── Subida de archivos ── -->
+  <div class="card">
+    <h2>⬆️ Subir archivos</h2>
+    <form action="/upload" method="post" enctype="multipart/form-data" id="uploadForm">
+      <div class="upload-zone" id="dropZone">
+        <label for="archivos">
+          <div class="icon">🖼️</div>
+          <p>Haz clic o arrastra tus imágenes aquí</p>
+          <small>Formatos: PNG, JPG, JPEG, TIFF, BMP, GIF · Máx. 16 MB por archivo</small>
+        </label>
+        <input type="file" id="archivos" name="archivos" multiple
+               accept=".png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif">
+      </div>
+      <div id="file-list"></div>
+      <div class="btn-group">
+        <button type="submit" class="btn btn-primary">🔍 Procesar con OCR</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ── Registros guardados ── -->
+  <div class="card">
+    <h2>📊 Registros en Excel</h2>
+    {% if registros %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>📅 Fecha</th>
+              <th>✅ Código de Aprobado</th>
+              <th>💰 Valor Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in registros %}
+            <tr>
+              <td>{{ loop.index }}</td>
+              <td>{{ r.fecha if r.fecha and r.fecha != 'No detectado'
+                    else '<span class="badge-empty">No detectado</span>' | safe }}</td>
+              <td>{{ r.codigo if r.codigo and r.codigo != 'No detectado'
+                    else '<span class="badge-empty">No detectado</span>' | safe }}</td>
+              <td>{{ r.total if r.total and r.total != 'No detectado'
+                    else '<span class="badge-empty">No detectado</span>' | safe }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <div class="icon">📭</div>
+        <p>Aún no hay registros. Sube tu primer archivo para comenzar.</p>
+      </div>
+    {% endif %}
+
+    <div class="btn-group">
+      <a href="/descargar" class="btn btn-success">⬇️ Descargar Excel</a>
+      <form action="/limpiar" method="post" style="display:inline"
+            onsubmit="return confirm('¿Estás seguro de limpiar todos los registros?')">
+        <button type="submit" class="btn btn-danger">🗑️ Limpiar registros</button>
+      </form>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const input = document.getElementById('archivos');
+  const lista = document.getElementById('file-list');
+
+  input.addEventListener('change', () => {
+    const nombres = [...input.files].map(f => `📎 ${f.name}`).join('<br>');
+    lista.innerHTML = nombres ? `<div style="margin-top:10px;line-height:1.8">${nombres}</div>` : '';
+  });
+
+  // Drag & Drop
+  const zone = document.getElementById('dropZone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.borderColor='#1F4E79'; });
+  zone.addEventListener('dragleave', () => { zone.style.borderColor='#90cdf4'; });
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.style.borderColor = '#90cdf4';
+    input.files = e.dataTransfer.files;
+    input.dispatchEvent(new Event('change'));
+  });
+</script>
+</body>
+</html>

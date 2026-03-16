@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resultados OCR – Facturas</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #2d3748; }
+
+    header {
+      background: linear-gradient(135deg, #1F4E79, #2E86C1);
+      color: #fff; padding: 24px 40px;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 700; }
+
+    .container { max-width: 1000px; margin: 32px auto; padding: 0 20px; }
+
+    .card {
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08); padding: 28px; margin-bottom: 24px;
+    }
+    .card h2 { font-size: 1rem; color: #1F4E79; margin-bottom: 16px;
+               display: flex; align-items: center; gap: 8px; }
+
+    .result-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;
+      margin-bottom: 16px;
+    }
+    .data-box {
+      background: #ebf8ff; border-radius: 8px; padding: 14px;
+      border-left: 4px solid #2E86C1;
+    }
+    .data-box.success { border-color: #198754; background: #d1e7dd; }
+    .data-box.warning { border-color: #f0ad4e; background: #fff3cd; }
+    .data-box label { font-size: .75rem; font-weight: 700; text-transform: uppercase;
+                      letter-spacing: .05em; color: #718096; display: block; margin-bottom: 4px; }
+    .data-box span  { font-size: 1rem; font-weight: 600; color: #2d3748; }
+    .data-box .not-found { color: #a0aec0; font-style: italic; font-weight: 400; font-size: .9rem; }
+
+    details { margin-top: 12px; }
+    summary { cursor: pointer; font-size: .85rem; color: #4a90d9; font-weight: 600;
+              padding: 6px 0; user-select: none; }
+    .ocr-text {
+      background: #1a202c; color: #e2e8f0; border-radius: 8px;
+      padding: 14px; font-family: monospace; font-size: .78rem;
+      line-height: 1.6; white-space: pre-wrap; word-break: break-all;
+      margin-top: 8px; max-height: 220px; overflow-y: auto;
+    }
+
+    .status-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 20px;
+      font-size: .78rem; font-weight: 700;
+    }
+    .badge-ok  { background: #d1e7dd; color: #0f5132; }
+    .badge-partial { background: #fff3cd; color: #856404; }
+
+    .btn {
+      padding: 10px 22px; border-radius: 8px; font-size: .9rem;
+      font-weight: 600; cursor: pointer; border: none; transition: all .2s;
+      display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+    }
+    .btn-primary { background: #1F4E79; color: #fff; }
+    .btn-primary:hover { background: #163d5e; }
+    .btn-success { background: #198754; color: #fff; }
+    .btn-success:hover { background: #146c43; }
+
+    .summary-bar {
+      background: #d1e7dd; border-radius: 8px; padding: 14px 20px;
+      margin-bottom: 24px; font-size: .9rem; color: #0f5132; font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>✅ Resultados del procesamiento OCR</h1>
+</header>
+
+<div class="container">
+
+  <div class="summary-bar">
+    🎉 Se procesaron <strong>{{ resultados|length }}</strong> archivo(s) y los datos fueron guardados en el Excel.
+  </div>
+
+  {% for r in resultados %}
+  <div class="card">
+    <h2>
+      📄 {{ r.archivo }}
+      {% set campos_ok = [r.fecha, r.codigo_aprobado, r.total] | select | list | length %}
+      {% if campos_ok == 3 %}
+        <span class="status-badge badge-ok">✅ Completo</span>
+      {% else %}
+        <span class="status-badge badge-partial">⚠️ {{ campos_ok }}/3 detectados</span>
+      {% endif %}
+    </h2>
+
+    <div class="result-grid">
+      <div class="data-box {{ 'success' if r.fecha else 'warning' }}">
+        <label>📅 Fecha</label>
+        {% if r.fecha %}
+          <span>{{ r.fecha }}</span>
+        {% else %}
+          <span class="not-found">No detectado</span>
+        {% endif %}
+      </div>
+
+      <div class="data-box {{ 'success' if r.codigo_aprobado else 'warning' }}">
+        <label>✅ Código de Aprobado</label>
+        {% if r.codigo_aprobado %}
+          <span>{{ r.codigo_aprobado }}</span>
+        {% else %}
+          <span class="not-found">No detectado</span>
+        {% endif %}
+      </div>
+
+      <div class="data-box {{ 'success' if r.total else 'warning' }}">
+        <label>💰 Valor Total</label>
+        {% if r.total %}
+          <span>{{ r.total }}</span>
+        {% else %}
+          <span class="not-found">No detectado</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <details>
+      <summary>🔍 Ver texto extraído por OCR</summary>
+      <div class="ocr-text">{{ r.texto_ocr }}</div>
+    </details>
+  </div>
+  {% endfor %}
+
+  <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:8px;">
+    <a href="/" class="btn btn-primary">⬅️ Subir más archivos</a>
+    <a href="/descargar" class="btn btn-success">⬇️ Descargar Excel</a>
+  </div>
+
+</div>
+</body>
+</html>
