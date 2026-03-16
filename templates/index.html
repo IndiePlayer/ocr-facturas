@@ -57,6 +57,8 @@
     .btn-success:hover { background: #146c43; }
     .btn-danger  { background: #dc3545; color: #fff; }
     .btn-danger:hover  { background: #b02a37; }
+    .btn-camara { background: #0d6efd; color: #fff; }
+    .btn-camara:hover { background: #0b5ed7; }
     .btn-group { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
 
     /* ── Tabla ── */
@@ -97,14 +99,19 @@
         <label for="archivos">
           <div class="icon">🖼️</div>
           <p>Haz clic o arrastra tus imágenes aquí</p>
-          <small>Formatos: PNG, JPG, JPEG, TIFF, BMP, GIF · Máx. 16 MB por archivo</small>
+          <small>Formatos: PNG, JPG, JPEG, TIFF, BMP, GIF, WEBP · Máx. 16 MB por archivo</small>
         </label>
         <input type="file" id="archivos" name="archivos" multiple
-               accept=".png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif">
+               accept=".png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.webp">
       </div>
       <div id="file-list"></div>
       <div class="btn-group">
         <button type="submit" class="btn btn-primary">🔍 Procesar con OCR</button>
+        <label for="camara" class="btn btn-camara" title="Tomar foto con la cámara">
+          📷 Tomar foto
+        </label>
+        <input type="file" id="camara" name="archivos" multiple
+               accept="image/*" capture="environment" style="display:none">
       </div>
     </form>
   </div>
@@ -157,13 +164,17 @@
 </div>
 
 <script>
-  const input = document.getElementById('archivos');
-  const lista = document.getElementById('file-list');
+  const input  = document.getElementById('archivos');
+  const camara = document.getElementById('camara');
+  const lista  = document.getElementById('file-list');
 
-  input.addEventListener('change', () => {
-    const nombres = [...input.files].map(f => `📎 ${f.name}`).join('<br>');
+  function mostrarArchivos(files) {
+    const nombres = [...files].map(f => `📎 ${f.name}`).join('<br>');
     lista.innerHTML = nombres ? `<div style="margin-top:10px;line-height:1.8">${nombres}</div>` : '';
-  });
+  }
+
+  input.addEventListener('change',  () => mostrarArchivos(input.files));
+  camara.addEventListener('change', () => mostrarArchivos(camara.files));
 
   // Drag & Drop
   const zone = document.getElementById('dropZone');
@@ -173,7 +184,7 @@
     e.preventDefault();
     zone.style.borderColor = '#90cdf4';
     input.files = e.dataTransfer.files;
-    input.dispatchEvent(new Event('change'));
+    mostrarArchivos(input.files);
   });
 </script>
 </body>

@@ -2,7 +2,7 @@ import os
 import re
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from werkzeug.utils import secure_filename
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter
 import pytesseract
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -13,7 +13,7 @@ app.secret_key = "clave_secreta_ocr_facturas"
 
 UPLOAD_FOLDER = "uploads"
 EXCEL_FILE = "facturas.xlsx"
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "bmp", "tiff", "pdf"}
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "bmp", "tiff", "tif", "webp"}
 
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB max
@@ -26,11 +26,20 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def preprocesar_imagen(img):
+    img = img.convert("L")                                    # Escala de grises
+    ancho, alto = img.size
+    img = img.resize((ancho * 2, alto * 2), Image.LANCZOS)   # Agrandar x2
+    img = ImageEnhance.Contrast(img).enhance(2.5)             # Más contraste
+    img = ImageEnhance.Sharpness(img).enhance(2.0)            # Más nitidez
+    img = img.point(lambda x: 0 if x < 140 else 255)         # Blanco y negro puro
+    return img
+
+
 def extraer_texto_ocr(filepath):
-    """Extrae texto de imagen usando pytesseract."""
     try:
         img = Image.open(filepath)
-        # Configuración para mejorar precisión: modo de página completa + español/inglés
+        img = preprocesar_imagen(img)
         config = "--oem 3 --psm 6 -l spa+eng"
         texto = pytesseract.image_to_string(img, config=config)
         return texto
@@ -39,18 +48,11 @@ def extraer_texto_ocr(filepath):
 
 
 def extraer_datos(texto):
-    """
-    Aplica expresiones regulares para extraer:
-      - Código de aprobado
-      - Total de la factura
-      - Fecha del documento
-    """
     resultado = {"fecha": None, "codigo_aprobado": None, "total": None}
 
     # ── CÓDIGO DE APROBADO ──────────────────────────────────────────────────
-    # Busca patrones como: "Aprobado: 123456", "Cod. Aprobación: AB-7890",
-    # "Aprobación: 001122", "AUTH: 456789", "Autorización: 987654"
     patrones_codigo = [
+        r"APRO\.?\s*[:#]?\s*(\d{4,10})",
         r"(?:c[oó]d(?:igo)?\.?\s*(?:de\s*)?aprobaci[oó]n|aprobado|aprobaci[oó]n|auth(?:orization)?|autorizaci[oó]n)\s*[:#\-]?\s*([A-Z0-9\-]{4,20})",
         r"(?:no\.?\s*aprobaci[oó]n|n[uú]mero\s*aprobaci[oó]n)\s*[:#\-]?\s*([A-Z0-9\-]{4,20})",
         r"\bAPROB(?:ADO)?\b[\s:]*([A-Z0-9\-]{4,20})",
@@ -62,34 +64,32 @@ def extraer_datos(texto):
             break
 
     # ── TOTAL ────────────────────────────────────────────────────────────────
-    # Busca patrones como: "Total: $1,234.56", "TOTAL A PAGAR: 5.000,00",
-    # "Importe total: 980.00", "Gran Total $ 12.500"
     patrones_total = [
+        r"(?:TOTAL|'OTAL|T0TAL)\s*\$?\s*([\d\.\,]+)",
         r"(?:total\s*(?:a\s*pagar|factura|general|importe)?|gran\s*total|importe\s*total|monto\s*total)\s*[:\$]?\s*\$?\s*([\d\.,]+)",
-        r"(?:total|TOTAL)\s*\$\s*([\d\.,]+)",
         r"(?:valor\s*total|total\s*bs\.?|total\s*cop)\s*[:\$]?\s*([\d\.,]+)",
     ]
     for patron in patrones_total:
         match = re.search(patron, texto, re.IGNORECASE)
         if match:
-            resultado["total"] = match.group(1).strip()
+            total_limpio = re.sub(r"[\[\]\(\)]+$", "", match.group(1)).strip()
+            resultado["total"] = total_limpio
             break
 
     # ── FECHA ────────────────────────────────────────────────────────────────
-    # Busca: DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, "15 de enero de 2024", etc.
+    texto_fecha = texto
+    texto_fecha = re.sub(r'\b200(\d)[/\-](\d{2})[/\-](\d{2})', r'202\1/\2/\3', texto_fecha)
+
     patrones_fecha = [
-        # ISO: 2024-03-15
-        r"\b(20\d{2}[-/]\d{1,2}[-/]\d{1,2})\b",
-        # DD/MM/YYYY o DD-MM-YYYY
-        r"\b(\d{1,2}[-/]\d{1,2}[-/]20\d{2})\b",
-        # "15 de marzo de 2024" o "15 de marzo 2024"
+        r"\b(202[0-9][/\-]\d{1,2}[/\-]\d{1,2})\b",
+        r"\b(\d{1,2}[/\-]\d{1,2}[/\-]202[0-9])\b",
         r"\b(\d{1,2}\s+de\s+(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+(?:de\s+)?20\d{2})\b",
-        # "March 15, 2024" o "15 March 2024"
         r"\b(\d{1,2}\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+20\d{2})\b",
         r"\b((?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+20\d{2})\b",
+        r"\b(20\d{2}[/\-]\d{1,2}[/\-]\d{1,2})\b",
     ]
     for patron in patrones_fecha:
-        match = re.search(patron, texto, re.IGNORECASE)
+        match = re.search(patron, texto_fecha, re.IGNORECASE)
         if match:
             resultado["fecha"] = match.group(1).strip()
             break
@@ -110,9 +110,10 @@ THIN_BORDER  = Border(
     top=Side(style="thin"),
     bottom=Side(style="thin"),
 )
-DATA_FONT = Font(name="Arial", size=10)
+DATA_FONT         = Font(name="Arial", size=10)
 DATA_ALIGN_CENTER = Alignment(horizontal="center", vertical="center")
 DATA_ALIGN_RIGHT  = Alignment(horizontal="right",  vertical="center")
+
 
 def crear_excel_si_no_existe():
     if not os.path.exists(EXCEL_FILE):
@@ -122,10 +123,10 @@ def crear_excel_si_no_existe():
         encabezados = ["Fecha", "Código de Aprobado", "Valor Total"]
         for col, titulo in enumerate(encabezados, start=1):
             cell = ws.cell(row=1, column=col, value=titulo)
-            cell.fill   = HEADER_FILL
-            cell.font   = HEADER_FONT
+            cell.fill      = HEADER_FILL
+            cell.font      = HEADER_FONT
             cell.alignment = HEADER_ALIGN
-            cell.border = THIN_BORDER
+            cell.border    = THIN_BORDER
         ws.column_dimensions["A"].width = 22
         ws.column_dimensions["B"].width = 25
         ws.column_dimensions["C"].width = 20
@@ -139,17 +140,14 @@ def guardar_en_excel(fecha, codigo_aprobado, total):
     ws = wb["Facturas"]
     nueva_fila = ws.max_row + 1
 
-    valores = [fecha or "No detectado",
-               codigo_aprobado or "No detectado",
-               total or "No detectado"]
+    valores     = [fecha or "No detectado", codigo_aprobado or "No detectado", total or "No detectado"]
     alineaciones = [DATA_ALIGN_CENTER, DATA_ALIGN_CENTER, DATA_ALIGN_RIGHT]
 
     for col, (val, aln) in enumerate(zip(valores, alineaciones), start=1):
-        cell = ws.cell(row=nueva_fila, column=col, value=val)
+        cell           = ws.cell(row=nueva_fila, column=col, value=val)
         cell.font      = DATA_FONT
         cell.alignment = aln
         cell.border    = THIN_BORDER
-        # Filas alternas en gris muy claro
         if nueva_fila % 2 == 0:
             cell.fill = PatternFill("solid", start_color="EBF3FB")
 
@@ -184,7 +182,7 @@ def upload():
             datos = extraer_datos(texto)
             guardar_en_excel(datos["fecha"], datos["codigo_aprobado"], datos["total"])
             resultados.append({
-                "archivo": nombre,
+                "archivo":  nombre,
                 **datos,
                 "texto_ocr": texto[:500] + ("..." if len(texto) > 500 else ""),
             })
@@ -211,8 +209,8 @@ def limpiar():
 def obtener_registros():
     if not os.path.exists(EXCEL_FILE):
         return []
-    wb = load_workbook(EXCEL_FILE, data_only=True)
-    ws = wb["Facturas"]
+    wb    = load_workbook(EXCEL_FILE, data_only=True)
+    ws    = wb["Facturas"]
     filas = list(ws.iter_rows(min_row=2, values_only=True))
     return [{"fecha": f[0], "codigo": f[1], "total": f[2]} for f in filas if any(f)]
 
